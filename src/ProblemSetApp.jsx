@@ -370,7 +370,7 @@ export default function ProblemSetApp() {
 
       if (nextCount > nextSet.rootIds.length) {
         for (let i = nextSet.rootIds.length + 1; i <= nextCount; i += 1) {
-          const chapter = createNode(`章${i}`, null, undefined, "kind_chapter");
+          const chapter = createNode(`第${i}章`, null, undefined, "kind_chapter");
           nextSet.nodes[chapter.id] = chapter;
           nextSet.rootIds.push(chapter.id);
           if (!nextActiveId) nextActiveId = chapter.id;
