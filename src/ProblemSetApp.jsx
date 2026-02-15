@@ -346,23 +346,56 @@ export default function ProblemSetApp() {
     setActiveSetId(next[0].id);
   }
 
-  function addTopLevelNode() {
+  function changeChapterCount() {
     if (!active) return;
-    const title = prompt("最上位に追加する項目名");
-    if (!title) return;
-    const node = createNode(title, null);
-    mutateActiveSet((s) => ({
-      ...s,
-      nodes: { ...s.nodes, [node.id]: node },
-      rootIds: [...s.rootIds, node.id],
-    }));
-    setActiveNodeId(node.id);
+    const currentCount = active.rootIds.length;
+    const raw = prompt("章の数を入力してください", String(currentCount || 1));
+    if (!raw) return;
+    const nextCount = parseInt(raw, 10);
+    if (!Number.isFinite(nextCount) || nextCount <= 0) {
+      alert("1以上の数を入力してください");
+      return;
+    }
+
+    if (nextCount === currentCount) return;
+
+    if (nextCount < currentCount) {
+      const removeCount = currentCount - nextCount;
+      if (!confirm(`末尾の${removeCount}章を配下ごと削除します。よろしいですか？`)) return;
+    }
+
+    let nextActiveId = activeNodeId;
+    mutateActiveSet((s) => {
+      let nextSet = { ...s, nodes: { ...s.nodes }, rootIds: [...s.rootIds] };
+
+      if (nextCount > nextSet.rootIds.length) {
+        for (let i = nextSet.rootIds.length + 1; i <= nextCount; i += 1) {
+          const chapter = createNode(`章${i}`, null, undefined, "kind_chapter");
+          nextSet.nodes[chapter.id] = chapter;
+          nextSet.rootIds.push(chapter.id);
+          if (!nextActiveId) nextActiveId = chapter.id;
+        }
+      } else {
+        while (nextSet.rootIds.length > nextCount) {
+          const removeId = nextSet.rootIds[nextSet.rootIds.length - 1];
+          const deleted = deleteNodeDeep(nextSet, removeId);
+          nextSet = deleted.nextSet;
+          if (nextActiveId && !nextSet.nodes[nextActiveId]) {
+            nextActiveId = nextSet.rootIds[0] ?? "";
+          }
+        }
+      }
+
+      return nextSet;
+    });
+
+    setActiveNodeId(nextActiveId || "");
   }
 
   function addChildNode() {
     if (!active) return;
     if (!activeNodeId) {
-      alert("先に親項目を選択してください");
+      alert("先に章または親項目を選択してください");
       return;
     }
 
@@ -655,7 +688,7 @@ export default function ProblemSetApp() {
           <details className="control">
             <summary className="cursor-pointer select-none">階層の編集</summary>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button className="btn" onClick={addTopLevelNode}>最上位を追加</button>
+              <button className="btn" onClick={changeChapterCount}>章数を変更</button>
               <button className="btn btn-primary" onClick={addChildNode}>子項目を追加（複数可）</button>
               <button className="btn" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
               <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
