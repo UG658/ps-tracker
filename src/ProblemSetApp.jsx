@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-const LS_KEY = "ps_tracker_v4";
-const LEGACY_LS_KEY = "ps_tracker_v3";
+const LS_KEY = "ps_tracker_v5";
+const LEGACY_LS_KEY = "ps_tracker_v4";
+const OLDEST_LS_KEY = "ps_tracker_v3";
 const now = () => Date.now();
 const fmtDate = (t) => new Date(t).toLocaleString();
 
@@ -16,9 +17,19 @@ function priorityScore(node) {
   return base + (10 - Math.min(days, 10)) * -0.05 + wrongs * -0.1;
 }
 
-function createNode(title, parentId = null, id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`) {
+function createKind(prefix = "k") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createNode(
+  title,
+  parentId = null,
+  id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  kind = createKind()
+) {
   return {
     id,
+    kind,
     title,
     parentId,
     childrenIds: [],
@@ -36,17 +47,18 @@ function makeDemoSet() {
   const nodeMap = {};
   const rootIds = [];
   const bigSections = ["第1章 ベクトル", "第2章 行列", "第3章 微分"];
+  const chapterKind = "kind_chapter";
 
   bigSections.forEach((name, i) => {
     const bigId = `n_big_${i + 1}`;
-    const big = createNode(name, null, bigId);
+    const big = createNode(name, null, bigId, chapterKind);
     nodeMap[bigId] = big;
     rootIds.push(bigId);
 
     const count = i === 0 ? 8 : i === 1 ? 6 : 10;
     for (let j = 1; j <= count; j += 1) {
       const childId = `n_${i + 1}_${j}`;
-      const child = createNode(`問${j}`, bigId, childId);
+      const child = createNode(`問${j}`, bigId, childId, `kind_chapter_child_${j}`);
       nodeMap[childId] = child;
       big.childrenIds.push(childId);
     }
@@ -71,6 +83,7 @@ function normalizeNode(raw, idx, parentId = null) {
 
   return {
     id: String(raw?.id ?? `n_${Date.now()}_${idx}`),
+    kind: String(raw?.kind ?? ""),
     title: String(raw?.title ?? `項目${idx + 1}`),
     parentId,
     childrenIds: Array.isArray(raw?.childrenIds) ? raw.childrenIds.map((x) => String(x)) : [],
@@ -82,6 +95,27 @@ function normalizeNode(raw, idx, parentId = null) {
     attemptsToCheck: raw?.attemptsToCheck == null ? null : Number(raw.attemptsToCheck),
     lastSeenAt: raw?.lastSeenAt == null ? null : Number(raw.lastSeenAt),
   };
+}
+
+function ensureNodeKinds(nodes, rootIds) {
+  const visited = new Set();
+  const stack = rootIds.map((id, index) => ({ id, parentKind: "root", slot: index + 1 }));
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current.id)) continue;
+    const n = nodes[current.id];
+    if (!n) continue;
+
+    if (!n.kind) {
+      n.kind = `${current.parentKind}_slot_${current.slot}`;
+    }
+    visited.add(current.id);
+
+    n.childrenIds.forEach((cid, idx) => {
+      stack.push({ id: cid, parentKind: n.kind, slot: idx + 1 });
+    });
+  }
 }
 
 function normalizeTreeSet(raw, setIdx) {
@@ -108,6 +142,7 @@ function normalizeTreeSet(raw, setIdx) {
   Object.values(normalizedNodes).forEach((n) => {
     n.childrenIds = n.childrenIds.filter((cid) => normalizedNodes[cid]);
   });
+  ensureNodeKinds(normalizedNodes, rootIds);
 
   return {
     id: String(raw?.id ?? `set_${Date.now()}_${setIdx}`),
@@ -125,17 +160,20 @@ function convertLegacySet(raw, setIdx) {
 
   chapters.forEach((ch, i) => {
     const chId = `n_ch_${String(ch?.id ?? i)}`;
-    const chNode = createNode(String(ch?.name ?? `第${i + 1}章`), null, chId);
+    const chNode = createNode(String(ch?.name ?? `第${i + 1}章`), null, chId, "kind_chapter");
     nodes[chId] = chNode;
     rootIds.push(chId);
   });
 
+  const childSlotByParent = {};
   problems.forEach((p, i) => {
     const chapterRawId = String(p?.chapterId ?? "");
     const mappedParentId = rootIds.find((id) => id.endsWith(chapterRawId));
     const parentId = mappedParentId ?? rootIds[0] ?? null;
     const nodeId = String(p?.id ?? `n_legacy_${i}`);
-    const n = createNode(String(p?.title ?? `問${i + 1}`), parentId, nodeId);
+    const slot = (childSlotByParent[parentId ?? "root"] ?? 0) + 1;
+    childSlotByParent[parentId ?? "root"] = slot;
+    const n = createNode(String(p?.title ?? `問${i + 1}`), parentId, nodeId, `kind_chapter_child_${slot}`);
     const normalized = normalizeNode({ ...n, ...p, id: nodeId, parentId }, i, parentId);
     nodes[nodeId] = normalized;
 
@@ -152,6 +190,8 @@ function convertLegacySet(raw, setIdx) {
     nodes[id] = createNode("第1階層", null, id);
     rootIds.push(id);
   }
+
+  ensureNodeKinds(nodes, rootIds);
 
   return {
     id: String(raw?.id ?? `set_${Date.now()}_${setIdx}`),
@@ -264,7 +304,7 @@ function deleteNodeDeep(set, nodeId) {
 export default function ProblemSetApp() {
   const persisted = useMemo(() => {
     try {
-      const raw = localStorage.getItem(LS_KEY) ?? localStorage.getItem(LEGACY_LS_KEY);
+      const raw = localStorage.getItem(LS_KEY) ?? localStorage.getItem(LEGACY_LS_KEY) ?? localStorage.getItem(OLDEST_LS_KEY);
       if (!raw) return [makeDemoSet()];
       return normalizeSets(JSON.parse(raw));
     } catch {
@@ -354,7 +394,7 @@ export default function ProblemSetApp() {
     const parent = active.nodes[activeNodeId];
     if (!parent) return;
 
-    const node = createNode(title, parent.id);
+    const node = createNode(title, parent.id, undefined, createKind(`kind_child_of_${parent.kind || "unknown"}`));
     mutateActiveSet((s) => ({
       ...s,
       nodes: {
@@ -364,6 +404,40 @@ export default function ProblemSetApp() {
       },
     }));
     setActiveNodeId(node.id);
+  }
+
+  function addChildNodeToSameLevel() {
+    if (!active) return;
+    const title = prompt("子項目の名前（同じ階層の項目に一括追加）");
+    if (!title) return;
+
+    if (!activeNodeId) {
+      addTopLevelNode();
+      return;
+    }
+
+    const currentParent = active.nodes[activeNodeId];
+    if (!currentParent) return;
+    const targetParents = Object.values(active.nodes).filter((n) => n.kind && n.kind === currentParent.kind);
+    if (targetParents.length === 0) return;
+
+    const sharedChildKind = createKind(`kind_child_of_${currentParent.kind}`);
+    let selectedNewId = "";
+
+    mutateActiveSet((s) => {
+      const nextNodes = { ...s.nodes };
+      targetParents.forEach((parent) => {
+        const latestParent = nextNodes[parent.id];
+        if (!latestParent) return;
+        const child = createNode(title, parent.id, undefined, sharedChildKind);
+        nextNodes[child.id] = child;
+        nextNodes[parent.id] = { ...latestParent, childrenIds: [...latestParent.childrenIds, child.id] };
+        if (parent.id === currentParent.id) selectedNewId = child.id;
+      });
+      return { ...s, nodes: nextNodes };
+    });
+
+    if (selectedNewId) setActiveNodeId(selectedNewId);
   }
 
   function renameNode() {
@@ -613,7 +687,8 @@ export default function ProblemSetApp() {
             <summary className="cursor-pointer select-none">階層の編集</summary>
             <div className="mt-2 flex flex-wrap gap-2">
               <button className="btn" onClick={addTopLevelNode}>最上位を追加</button>
-              <button className="btn" onClick={addChildNode}>子項目を追加</button>
+              <button className="btn btn-primary" onClick={addChildNodeToSameLevel}>子項目を一括追加</button>
+              <button className="btn" onClick={addChildNode}>この項目だけ子を追加</button>
               <button className="btn" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
               <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
             </div>
