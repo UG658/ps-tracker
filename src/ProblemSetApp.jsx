@@ -43,32 +43,12 @@ function createNode(
   };
 }
 
-function makeDemoSet() {
-  const nodeMap = {};
-  const rootIds = [];
-  const bigSections = ["第1章 ベクトル", "第2章 行列", "第3章 微分"];
-  const chapterKind = "kind_chapter";
-
-  bigSections.forEach((name, i) => {
-    const bigId = `n_big_${i + 1}`;
-    const big = createNode(name, null, bigId, chapterKind);
-    nodeMap[bigId] = big;
-    rootIds.push(bigId);
-
-    const count = i === 0 ? 8 : i === 1 ? 6 : 10;
-    for (let j = 1; j <= count; j += 1) {
-      const childId = `n_${i + 1}_${j}`;
-      const child = createNode(`問${j}`, bigId, childId, `kind_chapter_child_${j}`);
-      nodeMap[childId] = child;
-      big.childrenIds.push(childId);
-    }
-  });
-
+function makeEmptySet(name = "新しい問題集") {
   return {
-    id: "set_demo",
-    name: "デモ問題集",
-    rootIds,
-    nodes: nodeMap,
+    id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    rootIds: [],
+    nodes: {},
   };
 }
 
@@ -202,7 +182,7 @@ function convertLegacySet(raw, setIdx) {
 }
 
 function normalizeSets(raw) {
-  if (!Array.isArray(raw) || raw.length === 0) return [makeDemoSet()];
+  if (!Array.isArray(raw) || raw.length === 0) return [makeEmptySet("問題集1")];
 
   return raw.map((set, idx) => {
     if (set?.nodes) return normalizeTreeSet(set, idx);
@@ -305,10 +285,10 @@ export default function ProblemSetApp() {
   const persisted = useMemo(() => {
     try {
       const raw = localStorage.getItem(LS_KEY) ?? localStorage.getItem(LEGACY_LS_KEY) ?? localStorage.getItem(OLDEST_LS_KEY);
-      if (!raw) return [makeDemoSet()];
+      if (!raw) return [makeEmptySet("問題集1")];
       return normalizeSets(JSON.parse(raw));
     } catch {
-      return [makeDemoSet()];
+      return [makeEmptySet("問題集1")];
     }
   }, []);
 
@@ -340,9 +320,7 @@ export default function ProblemSetApp() {
   function addSet() {
     const name = prompt("新しい問題集の名前");
     if (!name) return;
-    const ns = makeDemoSet();
-    ns.id = `set_${Date.now()}`;
-    ns.name = name;
+    const ns = makeEmptySet(name);
     setSets([...sets, ns]);
     setActiveSetId(ns.id);
   }
@@ -359,9 +337,9 @@ export default function ProblemSetApp() {
     if (!confirm(`問題集「${active.name}」を削除します。よろしいですか？`)) return;
     const next = sets.filter((s) => s.id !== active.id);
     if (next.length === 0) {
-      const demo = makeDemoSet();
-      setSets([demo]);
-      setActiveSetId(demo.id);
+      const empty = makeEmptySet("問題集1");
+      setSets([empty]);
+      setActiveSetId(empty.id);
       return;
     }
     setSets(next);
