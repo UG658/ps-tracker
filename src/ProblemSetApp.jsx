@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const LS_KEY = "ps_tracker_v5";
 const LEGACY_LS_KEY = "ps_tracker_v4";
 const OLDEST_LS_KEY = "ps_tracker_v3";
+const PREF_KEY = "ps_tracker_ui_prefs_v1";
 const now = () => Date.now();
 const fmtDate = (t) => new Date(t).toLocaleString();
 
@@ -254,6 +255,18 @@ function buildPath(set, nodeId) {
   return names.join(" / ");
 }
 
+function buildPathIds(set, nodeId) {
+  const ids = [];
+  let current = set.nodes[nodeId];
+  let guard = 0;
+  while (current && guard < 100) {
+    ids.unshift(current.id);
+    current = current.parentId ? set.nodes[current.parentId] : null;
+    guard += 1;
+  }
+  return ids;
+}
+
 function deleteNodeDeep(set, nodeId) {
   const targets = new Set(collectDescendants(set, nodeId));
   const nodes = { ...set.nodes };
@@ -301,16 +314,46 @@ export default function ProblemSetApp() {
 
   const active = useMemo(() => sets.find((s) => s.id === activeSetId) ?? sets[0], [sets, activeSetId]);
 
-  const [activeNodeId, setActiveNodeId] = useState(active?.rootIds[0] ?? "");
+  const firstRootId = active?.rootIds?.[0] ?? "";
+  const [activeNodeId, setActiveNodeId] = useState(firstRootId);
   useEffect(() => {
-    setActiveNodeId(active?.rootIds[0] ?? "");
-  }, [active?.id]);
+    setActiveNodeId(firstRootId);
+  }, [active?.id, firstRootId]);
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [sortKey, setSortKey] = useState("priority");
   const [searchQuery, setSearchQuery] = useState("");
   const [dailyTarget, setDailyTarget] = useState(20);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState({});
   const importInputRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PREF_KEY);
+      if (!raw) return;
+      const pref = JSON.parse(raw);
+      if (pref?.filterStatus) setFilterStatus(pref.filterStatus);
+      if (pref?.sortKey) setSortKey(pref.sortKey);
+      if (typeof pref?.dailyTarget === "number") setDailyTarget(pref.dailyTarget);
+    } catch {
+      // ignore invalid UI preference payload
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(
+      PREF_KEY,
+      JSON.stringify({
+        filterStatus,
+        sortKey,
+        dailyTarget,
+      })
+    );
+  }, [filterStatus, sortKey, dailyTarget]);
+
+  useEffect(() => {
+    setCollapsedNodeIds({});
+  }, [active?.id]);
 
   function mutateActiveSet(mutator) {
     if (!active) return;
@@ -532,6 +575,43 @@ export default function ProblemSetApp() {
     });
   }
 
+  function bulkSetStatusForFiltered(targetStatus) {
+    if (!active || filtered.length === 0) return;
+    const count = filtered.length;
+    const label = statusLabel[targetStatus] ?? targetStatus;
+    if (!confirm(`一覧の${count}件を「${label}」に変更します。よろしいですか？`)) return;
+
+    const targetIds = new Set(filtered.map((n) => n.id));
+    mutateActiveSet((s) => {
+      const nextNodes = { ...s.nodes };
+      for (const id of targetIds) {
+        const n = nextNodes[id];
+        if (!n) continue;
+        const at = now();
+        const attempts = [...n.attempts, { outcome: targetStatus, at }];
+        if (targetStatus === "c") {
+          const becameCheck = n.status !== "c";
+          nextNodes[id] = {
+            ...n,
+            status: "c",
+            attempts,
+            lastSeenAt: at,
+            attemptsToCheck: becameCheck && n.attemptsToCheck == null ? attempts.length : n.attemptsToCheck,
+            firstCheckedAt: becameCheck && !n.firstCheckedAt ? at : n.firstCheckedAt,
+          };
+        } else {
+          nextNodes[id] = {
+            ...n,
+            status: targetStatus,
+            attempts,
+            lastSeenAt: at,
+          };
+        }
+      }
+      return { ...s, nodes: nextNodes };
+    });
+  }
+
   function exportSets() {
     const payload = {
       exportedAt: new Date().toISOString(),
@@ -655,6 +735,8 @@ export default function ProblemSetApp() {
 
   const progressRatio = scopedNodes.length === 0 ? 0 : Math.round((statusCounts.c / scopedNodes.length) * 100);
   const activeNodeTitle = activeNodeId ? active.nodes[activeNodeId]?.title ?? "" : "全体";
+  const breadcrumbIds = activeNodeId ? buildPathIds(active, activeNodeId) : [];
+  const collapsibleNodeIds = Object.keys(active.nodes).filter((id) => active.nodes[id].childrenIds.length > 0);
 
   return (
     <div className="app-shell">
@@ -668,6 +750,23 @@ export default function ProblemSetApp() {
             <button className="btn" onClick={redo}>Redo</button>
           </div>
         </div>
+
+        {breadcrumbIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 text-xs text-gray-600">
+            <span className="mr-1">現在地:</span>
+            {breadcrumbIds.map((id, idx) => (
+              <button
+                key={id}
+                type="button"
+                className="chip hover:bg-emerald-50"
+                onClick={() => setActiveNodeId(id)}
+              >
+                {active.nodes[id]?.title ?? id}
+                {idx < breadcrumbIds.length - 1 ? " /" : ""}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <select className="control" value={activeSetId} onChange={(e) => setActiveSetId(e.target.value)}>
@@ -705,7 +804,33 @@ export default function ProblemSetApp() {
         <div className="panel md:col-span-1">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">階層ツリー</h2>
-            <button className="btn text-xs px-2 py-1" onClick={() => setActiveNodeId("")}>全体表示</button>
+            <div className="flex items-center gap-2">
+              <button className="btn text-xs px-2 py-1" onClick={() => setActiveNodeId("")}>全体表示</button>
+              <button
+                className="btn text-xs px-2 py-1"
+                onClick={() => {
+                  const next = {};
+                  collapsibleNodeIds.forEach((id) => {
+                    next[id] = false;
+                  });
+                  setCollapsedNodeIds(next);
+                }}
+              >
+                全展開
+              </button>
+              <button
+                className="btn text-xs px-2 py-1"
+                onClick={() => {
+                  const next = {};
+                  collapsibleNodeIds.forEach((id) => {
+                    next[id] = true;
+                  });
+                  setCollapsedNodeIds(next);
+                }}
+              >
+                全折りたたみ
+              </button>
+            </div>
           </div>
           {active.rootIds.length === 0 ? (
             <div className="text-sm text-gray-500">項目がありません。</div>
@@ -719,6 +844,10 @@ export default function ProblemSetApp() {
                   depth={0}
                   activeNodeId={activeNodeId}
                   onSelect={setActiveNodeId}
+                  collapsedNodeIds={collapsedNodeIds}
+                  onToggleCollapse={(nodeId) => {
+                    setCollapsedNodeIds((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
+                  }}
                 />
               ))}
             </div>
@@ -806,6 +935,12 @@ export default function ProblemSetApp() {
             </select>
             <span className="text-sm text-gray-600 ml-auto">{filtered.length} 件</span>
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500">一覧一括:</span>
+            <button className="btn text-xs px-2 py-1" onClick={() => bulkSetStatusForFiltered("x")} disabled={filtered.length === 0}>×</button>
+            <button className="btn text-xs px-2 py-1" onClick={() => bulkSetStatusForFiltered("d")} disabled={filtered.length === 0}>△</button>
+            <button className="btn text-xs px-2 py-1" onClick={() => bulkSetStatusForFiltered("c")} disabled={filtered.length === 0}>✔</button>
+          </div>
         </div>
 
         {scopedNodes.length === 0 ? (
@@ -838,24 +973,34 @@ export default function ProblemSetApp() {
   );
 }
 
-function TreeItem({ set, nodeId, depth, activeNodeId, onSelect }) {
+function TreeItem({ set, nodeId, depth, activeNodeId, onSelect, collapsedNodeIds, onToggleCollapse }) {
   const node = set.nodes[nodeId];
   if (!node) return null;
+  const hasChildren = node.childrenIds.length > 0;
+  const isCollapsed = !!collapsedNodeIds[nodeId];
 
   return (
     <div>
-      <button
-        className={`tree-row ${activeNodeId === nodeId ? "tree-row-active" : ""}`}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
-        onClick={() => onSelect(nodeId)}
-      >
-        <span className={`inline-block w-2 h-2 rounded-full ${
-          node.status === "c" ? "bg-emerald-600" : node.status === "d" ? "bg-amber-500" : node.status === "x" ? "bg-red-500" : "bg-gray-400"
-        }`} />
-        <span className="truncate">{node.title}</span>
-        <span className="text-xs text-gray-500 ml-auto">{node.childrenIds.length}</span>
-      </button>
-      {node.childrenIds.map((cid) => (
+      <div className={`tree-row ${activeNodeId === nodeId ? "tree-row-active" : ""}`} style={{ paddingLeft: `${depth * 14 + 8}px` }}>
+        <button
+          type="button"
+          className={`w-5 h-5 rounded text-xs flex items-center justify-center ${hasChildren ? "hover:bg-gray-200/70" : "opacity-30 cursor-default"}`}
+          onClick={() => {
+            if (hasChildren) onToggleCollapse(nodeId);
+          }}
+          aria-label={hasChildren ? (isCollapsed ? "展開" : "折りたたみ") : "子なし"}
+        >
+          {hasChildren ? (isCollapsed ? "▶" : "▼") : "•"}
+        </button>
+        <button type="button" className="flex items-center gap-2 flex-1 text-left min-w-0" onClick={() => onSelect(nodeId)}>
+          <span className={`inline-block w-2 h-2 rounded-full ${
+            node.status === "c" ? "bg-emerald-600" : node.status === "d" ? "bg-amber-500" : node.status === "x" ? "bg-red-500" : "bg-gray-400"
+          }`} />
+          <span className="truncate">{node.title}</span>
+          <span className="text-xs text-gray-500 ml-auto">{node.childrenIds.length}</span>
+        </button>
+      </div>
+      {!isCollapsed && node.childrenIds.map((cid) => (
         <TreeItem
           key={cid}
           set={set}
@@ -863,6 +1008,8 @@ function TreeItem({ set, nodeId, depth, activeNodeId, onSelect }) {
           depth={depth + 1}
           activeNodeId={activeNodeId}
           onSelect={onSelect}
+          collapsedNodeIds={collapsedNodeIds}
+          onToggleCollapse={onToggleCollapse}
         />
       ))}
     </div>
