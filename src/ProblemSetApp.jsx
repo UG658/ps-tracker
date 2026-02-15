@@ -383,61 +383,52 @@ export default function ProblemSetApp() {
 
   function addChildNode() {
     if (!active) return;
-    const title = prompt("子項目の名前");
-    if (!title) return;
-
     if (!activeNodeId) {
-      addTopLevelNode();
+      alert("先に親項目を選択してください");
       return;
     }
 
     const parent = active.nodes[activeNodeId];
     if (!parent) return;
 
-    const node = createNode(title, parent.id, undefined, createKind(`kind_child_of_${parent.kind || "unknown"}`));
-    mutateActiveSet((s) => ({
-      ...s,
-      nodes: {
-        ...s.nodes,
-        [node.id]: node,
-        [parent.id]: { ...s.nodes[parent.id], childrenIds: [...s.nodes[parent.id].childrenIds, node.id] },
-      },
-    }));
-    setActiveNodeId(node.id);
-  }
+    const itemName = prompt("追加する子項目の名前（例: 大問）");
+    if (!itemName) return;
 
-  function addChildNodeToSameLevel() {
-    if (!active) return;
-    const title = prompt("子項目の名前（同じ階層の項目に一括追加）");
-    if (!title) return;
-
-    if (!activeNodeId) {
-      addTopLevelNode();
+    const rawCount = prompt("追加する子項目数（半角数字）", "1");
+    if (!rawCount) return;
+    const count = parseInt(rawCount, 10);
+    if (!Number.isFinite(count) || count <= 0) {
+      alert("1以上の数を入力してください");
       return;
     }
 
-    const currentParent = active.nodes[activeNodeId];
-    if (!currentParent) return;
-    const targetParents = Object.values(active.nodes).filter((n) => n.kind && n.kind === currentParent.kind);
-    if (targetParents.length === 0) return;
-
-    const sharedChildKind = createKind(`kind_child_of_${currentParent.kind}`);
-    let selectedNewId = "";
-
+    let firstNewId = "";
     mutateActiveSet((s) => {
+      const currentParent = s.nodes[parent.id];
+      if (!currentParent) return s;
       const nextNodes = { ...s.nodes };
-      targetParents.forEach((parent) => {
-        const latestParent = nextNodes[parent.id];
-        if (!latestParent) return;
-        const child = createNode(title, parent.id, undefined, sharedChildKind);
+      const newIds = [];
+
+      for (let i = 1; i <= count; i += 1) {
+        const child = createNode(
+          `${itemName}${i}`,
+          currentParent.id,
+          undefined,
+          createKind(`kind_child_of_${currentParent.kind || "unknown"}`)
+        );
         nextNodes[child.id] = child;
-        nextNodes[parent.id] = { ...latestParent, childrenIds: [...latestParent.childrenIds, child.id] };
-        if (parent.id === currentParent.id) selectedNewId = child.id;
-      });
+        newIds.push(child.id);
+        if (!firstNewId) firstNewId = child.id;
+      }
+
+      nextNodes[currentParent.id] = {
+        ...currentParent,
+        childrenIds: [...currentParent.childrenIds, ...newIds],
+      };
+
       return { ...s, nodes: nextNodes };
     });
-
-    if (selectedNewId) setActiveNodeId(selectedNewId);
+    if (firstNewId) setActiveNodeId(firstNewId);
   }
 
   function renameNode() {
@@ -687,8 +678,7 @@ export default function ProblemSetApp() {
             <summary className="cursor-pointer select-none">階層の編集</summary>
             <div className="mt-2 flex flex-wrap gap-2">
               <button className="btn" onClick={addTopLevelNode}>最上位を追加</button>
-              <button className="btn btn-primary" onClick={addChildNodeToSameLevel}>子項目を一括追加</button>
-              <button className="btn" onClick={addChildNode}>この項目だけ子を追加</button>
+              <button className="btn btn-primary" onClick={addChildNode}>子項目を追加（複数可）</button>
               <button className="btn" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
               <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
             </div>
