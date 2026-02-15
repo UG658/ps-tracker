@@ -1,3 +1,114 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-a: #f3f7ff;
+    --bg-b: #eefcf7;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --border: #d4e3e0;
+    --panel: rgba(255, 255, 255, 0.82);
+    --panel-strong: rgba(255, 255, 255, 0.95);
+    --accent: #0f766e;
+    --accent-soft: #ccfbf1;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Space Grotesk", "Noto Sans JP", sans-serif;
+    background:
+      radial-gradient(1100px 500px at 12% -8%, #dbeafe 0%, transparent 65%),
+      radial-gradient(900px 520px at 100% 10%, #d1fae5 0%, transparent 60%),
+      linear-gradient(140deg, var(--bg-a), var(--bg-b));
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply max-w-7xl mx-auto px-4 py-5 md:py-8 space-y-6;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    @apply rounded-2xl p-4 md:p-5 shadow-sm backdrop-blur-md;
+  }
+
+  .panel-strong {
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    @apply rounded-2xl p-4 md:p-5 shadow-md backdrop-blur-md;
+  }
+
+  .title-accent {
+    @apply text-3xl md:text-4xl font-bold tracking-tight;
+    letter-spacing: -0.02em;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .control {
+    @apply border rounded-xl px-3 py-2 text-sm bg-white/90 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-teal-500/40;
+    border-color: var(--border);
+  }
+
+  .btn {
+    @apply rounded-xl px-3 py-2 text-sm font-medium transition active:scale-[0.99] disabled:opacity-45 disabled:cursor-not-allowed;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.92);
+  }
+
+  .btn:hover {
+    @apply shadow-sm -translate-y-[1px];
+  }
+
+  .btn-primary {
+    @apply text-white border-transparent;
+    background: linear-gradient(120deg, #0f766e, #10b981);
+  }
+
+  .btn-danger {
+    @apply text-red-700;
+    background: #fff5f5;
+    border-color: #fecaca;
+  }
+
+  .tree-row {
+    @apply w-full text-left rounded-xl text-sm flex items-center gap-2 transition;
+    padding-block: 0.45rem;
+  }
+
+  .tree-row:hover {
+    background: rgba(15, 118, 110, 0.08);
+  }
+
+  .tree-row-active {
+    background: var(--accent-soft);
+    border: 1px solid #99f6e4;
+  }
+
+  .toolbar-sticky {
+    position: sticky;
+    top: 10px;
+    z-index: 10;
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    @apply rounded-xl p-3 shadow-sm backdrop-blur-md;
+  }
+}

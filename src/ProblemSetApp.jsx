@@ -581,55 +581,55 @@ export default function ProblemSetApp() {
   const activeNodeTitle = activeNodeId ? active.nodes[activeNodeId]?.title ?? "" : "全体";
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <header className="space-y-3">
+    <div className="app-shell">
+      <header className="panel-strong space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold">問題集トラッカー</h1>
-          <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-sm">完了率 {progressRatio}%</span>
-          <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-sm">フォーカス: {activeNodeTitle || "全体"}</span>
+          <h1 className="title-accent">問題集トラッカー</h1>
+          <span className="chip text-emerald-800">完了率 {progressRatio}%</span>
+          <span className="chip text-slate-700">フォーカス: {activeNodeTitle || "全体"}</span>
           <div className="ml-auto flex gap-2">
-            <button className="px-3 py-1 border rounded" onClick={undo}>Undo</button>
-            <button className="px-3 py-1 border rounded" onClick={redo}>Redo</button>
+            <button className="btn" onClick={undo}>Undo</button>
+            <button className="btn" onClick={redo}>Redo</button>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <select className="border rounded px-2 py-1" value={activeSetId} onChange={(e) => setActiveSetId(e.target.value)}>
+          <select className="control" value={activeSetId} onChange={(e) => setActiveSetId(e.target.value)}>
             {sets.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
 
-          <details className="border rounded px-2 py-1">
+          <details className="control">
             <summary className="cursor-pointer select-none">問題集の編集</summary>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button className="px-2 py-1 border rounded" onClick={addSet}>問題集を追加</button>
-              <button className="px-2 py-1 border rounded" onClick={renameSet}>名前を変更</button>
-              <button className="px-2 py-1 border rounded text-red-700" onClick={deleteSet}>問題集を削除</button>
+              <button className="btn" onClick={addSet}>問題集を追加</button>
+              <button className="btn" onClick={renameSet}>名前を変更</button>
+              <button className="btn btn-danger" onClick={deleteSet}>問題集を削除</button>
             </div>
           </details>
 
-          <details className="border rounded px-2 py-1">
+          <details className="control">
             <summary className="cursor-pointer select-none">階層の編集</summary>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button className="px-2 py-1 border rounded" onClick={addTopLevelNode}>最上位を追加</button>
-              <button className="px-2 py-1 border rounded" onClick={addChildNode}>子項目を追加</button>
-              <button className="px-2 py-1 border rounded" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
-              <button className="px-2 py-1 border rounded text-red-700" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
+              <button className="btn" onClick={addTopLevelNode}>最上位を追加</button>
+              <button className="btn" onClick={addChildNode}>子項目を追加</button>
+              <button className="btn" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
+              <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
             </div>
           </details>
 
-          <button className="px-2 py-1 border rounded" onClick={exportSets}>JSONエクスポート</button>
-          <button className="px-2 py-1 border rounded" onClick={triggerImport}>JSONインポート</button>
+          <button className="btn" onClick={exportSets}>JSONエクスポート</button>
+          <button className="btn" onClick={triggerImport}>JSONインポート</button>
           <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
         </div>
       </header>
 
       <section className="grid md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl border md:col-span-1">
+        <div className="panel md:col-span-1">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold">階層ツリー</h2>
-            <button className="text-xs px-2 py-1 border rounded" onClick={() => setActiveNodeId("")}>全体表示</button>
+            <button className="btn text-xs px-2 py-1" onClick={() => setActiveNodeId("")}>全体表示</button>
           </div>
           {active.rootIds.length === 0 ? (
             <div className="text-sm text-gray-500">項目がありません。</div>
@@ -649,7 +649,7 @@ export default function ProblemSetApp() {
           )}
         </div>
 
-        <div className="p-4 rounded-xl border md:col-span-2">
+        <div className="panel md:col-span-2">
           <h2 className="font-semibold mb-2">状態内訳（フォーカス範囲）</h2>
           <div className="flex gap-4 items-end">
             {(["n", "x", "d", "c"]).map((k) => (
@@ -668,13 +668,13 @@ export default function ProblemSetApp() {
         </div>
       </section>
 
-      <section className="p-4 rounded-xl border">
+      <section className="panel">
         <div className="flex items-center gap-3 mb-3">
           <h2 className="font-semibold">今日やる（優先度ベース）</h2>
           <label className="text-sm">目標件数
             <input
               type="number"
-              className="ml-2 border rounded px-2 py-1 w-20"
+              className="control ml-2 w-20"
               value={dailyTarget}
               onChange={(e) => setDailyTarget(Math.max(0, parseInt(e.target.value || "0", 10)))}
             />
@@ -705,8 +705,8 @@ export default function ProblemSetApp() {
         )}
       </section>
 
-      <section className="p-4 rounded-xl border space-y-3">
-        <div className="sticky top-2 z-10 bg-white/95 backdrop-blur border rounded-lg p-3">
+      <section className="panel space-y-3">
+        <div className="toolbar-sticky">
           <div className="flex flex-wrap gap-2 items-center">
             <h2 className="font-semibold mr-2">項目一覧</h2>
             <input
@@ -714,16 +714,16 @@ export default function ProblemSetApp() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="項目名・パス・メモ・タグを検索"
-              className="border rounded px-2 py-1 min-w-64"
+              className="control min-w-64"
             />
-            <select className="border rounded px-2 py-1" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <select className="control" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="all">全状態</option>
               <option value="n">未</option>
               <option value="x">×</option>
               <option value="d">△</option>
               <option value="c">✔</option>
             </select>
-            <select className="border rounded px-2 py-1" value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
+            <select className="control" value={sortKey} onChange={(e) => setSortKey(e.target.value)}>
               <option value="priority">優先度</option>
               <option value="lastSeen">最終学習が古い順</option>
               <option value="wrongs">×が多い順</option>
@@ -769,7 +769,7 @@ function TreeItem({ set, nodeId, depth, activeNodeId, onSelect }) {
   return (
     <div>
       <button
-        className={`w-full text-left px-2 py-1 rounded text-sm flex items-center gap-2 ${activeNodeId === nodeId ? "bg-emerald-100" : "hover:bg-gray-100"}`}
+        className={`tree-row ${activeNodeId === nodeId ? "tree-row-active" : ""}`}
         style={{ paddingLeft: `${depth * 14 + 8}px` }}
         onClick={() => onSelect(nodeId)}
       >
@@ -812,7 +812,7 @@ function NodeCard({ node, path, onAdvance, onComplete, onDelete, onSaveNotes, on
   }
 
   return (
-    <div className={`border rounded-xl p-3 space-y-2 ${featured ? "bg-emerald-50/40 border-emerald-200" : ""}`}>
+    <div className={`panel space-y-2 ${featured ? "ring-1 ring-emerald-200 shadow-md" : ""}`}>
       <div className="flex items-start gap-2">
         <div className={`w-2 h-2 mt-1 rounded-full ${
           node.status === "c" ? "bg-emerald-600" : node.status === "d" ? "bg-amber-500" : node.status === "x" ? "bg-red-500" : "bg-gray-400"
@@ -830,31 +830,31 @@ function NodeCard({ node, path, onAdvance, onComplete, onDelete, onSaveNotes, on
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className={`px-2 py-0.5 rounded bg-gray-100 ${statusText[node.status]}`}>状態: {statusLabel[node.status]}</span>
-        {typeof attemptsToCheck === "number" && <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700">完了まで: {attemptsToCheck}回</span>}
+        <span className={`chip ${statusText[node.status]}`}>状態: {statusLabel[node.status]}</span>
+        {typeof attemptsToCheck === "number" && <span className="chip text-gray-700">完了まで: {attemptsToCheck}回</span>}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <button className="px-2 py-1 text-sm border rounded" onClick={() => onAdvance(node.id, "x")}>× にする</button>
-        <button className="px-2 py-1 text-sm border rounded" onClick={() => onAdvance(node.id, "d")}>△ にする</button>
-        <button className="col-span-2 px-2 py-1 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onComplete(node.id)}>✔ 完了にする</button>
+        <button className="btn" onClick={() => onAdvance(node.id, "x")}>× にする</button>
+        <button className="btn" onClick={() => onAdvance(node.id, "d")}>△ にする</button>
+        <button className="btn btn-primary col-span-2" onClick={() => onComplete(node.id)}>✔ 完了にする</button>
       </div>
 
       <div className="flex justify-end">
-        <button className="px-2 py-1 text-xs border rounded text-red-700" onClick={() => onDelete(node.id)}>削除</button>
+        <button className="btn btn-danger text-xs px-2 py-1" onClick={() => onDelete(node.id)}>削除</button>
       </div>
 
       <details className="text-sm">
         <summary className="cursor-pointer select-none">詳細・履歴</summary>
         <div className="mt-2 space-y-2">
           <div>
-            <button className="px-2 py-1 text-xs border rounded" onClick={() => setNotesOpen(!notesOpen)}>
+            <button className="btn text-xs px-2 py-1" onClick={() => setNotesOpen(!notesOpen)}>
               {notesOpen ? "メモを閉じる" : "メモを開く"}
             </button>
             {notesOpen && (
               <div className="mt-2 space-y-2">
                 <textarea
-                  className="w-full h-24 border rounded p-2"
+                  className="control w-full h-24 p-2"
                   value={notes}
                   onChange={(e) => {
                     setNotes(e.target.value);
@@ -866,7 +866,7 @@ function NodeCard({ node, path, onAdvance, onComplete, onDelete, onSaveNotes, on
                   placeholder="メモ・ヒント・参照リンクなど"
                 />
                 <div className="flex justify-end">
-                  <button className="px-2 py-1 text-xs border rounded" onClick={handleSaveNotes} disabled={!dirty}>メモ保存</button>
+                  <button className="btn text-xs px-2 py-1" onClick={handleSaveNotes} disabled={!dirty}>メモ保存</button>
                 </div>
               </div>
             )}
