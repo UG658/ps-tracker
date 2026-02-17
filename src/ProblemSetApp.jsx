@@ -281,7 +281,7 @@ function labelFromTemplate(template, fallback) {
   return cleaned || fallback;
 }
 
-function createCountOptions(currentValue, minUpper = 30, pad = 30, start = 0) {
+function createCountOptions(currentValue, minUpper = 200, pad = 200, start = 0) {
   const safe = Number.isFinite(Number(currentValue)) ? Number(currentValue) : 0;
   const upper = Math.max(minUpper, safe + pad);
   return Array.from({ length: upper - start + 1 }, (_, i) => i + start);
@@ -801,14 +801,14 @@ export default function ProblemSetApp() {
   const level1Label = labelFromTemplate(levelTemplates[0], "第1階層");
   const level2Label = labelFromTemplate(levelTemplates[1], "第2階層");
   const level3Label = labelFromTemplate(levelTemplates[2], "第3階層");
-  const chapterOptions = createCountOptions(builderChapterCount, 40, 40, 1);
+  const chapterOptions = createCountOptions(builderChapterCount, 200, 200, 1);
   const globalMajorMax = Math.max(0, ...Object.values(builderMajorCounts).map((v) => Number(v) || 0));
-  const majorOptionsGlobal = createCountOptions(globalMajorMax, 40, 40, 0);
+  const majorOptionsGlobal = createCountOptions(globalMajorMax, 200, 200, 0);
   const majorCountForMinorTarget = Number(builderMajorCounts[minorTargetChapter] ?? 0);
   const minorOptionsGlobal = createCountOptions(
     Math.max(0, ...Object.values(builderMinorCounts).map((v) => Number(v) || 0)),
-    40,
-    40,
+    200,
+    200,
     0
   );
   const builderMajorTotal = Array.from({ length: builderChapterCount }, (_, idx) => Number(builderMajorCounts[idx + 1] ?? 0)).reduce(
@@ -935,7 +935,7 @@ export default function ProblemSetApp() {
                     value={Number(builderMajorCounts[ci] ?? 0)}
                     onChange={(e) => setMajorCountForChapter(ci, parseInt(e.target.value, 10))}
                   >
-                    {createCountOptions(Number(builderMajorCounts[ci] ?? 0), 40, 40, 0).map((n) => (
+                    {createCountOptions(Number(builderMajorCounts[ci] ?? 0), 200, 200, 0).map((n) => (
                       <option key={`major-${ci}-${n}`} value={n}>{n}</option>
                     ))}
                   </select>
@@ -977,7 +977,7 @@ export default function ProblemSetApp() {
                     value={Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0)}
                     onChange={(e) => setMinorCountForMajor(minorTargetChapter, mi, parseInt(e.target.value, 10))}
                   >
-                    {createCountOptions(Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0), 40, 40, 0).map((n) => (
+                    {createCountOptions(Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0), 200, 200, 0).map((n) => (
                       <option key={`minor-opt-${minorTargetChapter}-${mi}-${n}`} value={n}>{n}</option>
                     ))}
                   </select>
