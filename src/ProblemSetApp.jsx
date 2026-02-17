@@ -10,6 +10,9 @@ const fmtDate = (t) => new Date(t).toLocaleString();
 const statusLabel = { n: "未", x: "×", d: "△", c: "✔" };
 const statusColor = { n: "bg-gray-400", x: "bg-red-500", d: "bg-amber-500", c: "bg-emerald-600" };
 const statusText = { n: "text-gray-600", x: "text-red-700", d: "text-amber-700", c: "text-emerald-700" };
+const COUNT_DIRECT_VALUE = "__direct__";
+const COUNT_EXPAND_VALUE = "__expand__";
+const COUNT_EXPAND_STEP = 120;
 
 function priorityScore(node) {
   const base = node.status === "c" ? 4 : 0;
@@ -281,10 +284,63 @@ function labelFromTemplate(template, fallback) {
   return cleaned || fallback;
 }
 
-function createCountOptions(currentValue, minUpper = 200, pad = 200, start = 0) {
+function createCountOptions(currentValue, upper = 120, start = 0) {
   const safe = Number.isFinite(Number(currentValue)) ? Number(currentValue) : 0;
-  const upper = Math.max(minUpper, safe + pad);
-  return Array.from({ length: upper - start + 1 }, (_, i) => i + start);
+  const safeUpper = Math.max(start, Number.isFinite(Number(upper)) ? Number(upper) : 120);
+  const options = Array.from({ length: safeUpper - start + 1 }, (_, i) => i + start);
+  if (safe > safeUpper) options.push(safe);
+  return options;
+}
+
+function getCountForParent(countsByParent, parentPath) {
+  const raw = Number(countsByParent[parentPath] ?? 0);
+  if (parentPath === "root") return Math.max(1, Number.isFinite(raw) ? raw : 1);
+  return Math.max(0, Number.isFinite(raw) ? raw : 0);
+}
+
+function getVirtualNodesByLevel(templates, countsByParent) {
+  const levels = [[{ path: "root", label: "root", fullLabel: "全体", index: 1, parentPath: null }]];
+
+  for (let lv = 0; lv < templates.length; lv += 1) {
+    const parents = levels[lv];
+    const tpl = templates[lv] ?? `第${lv + 1}階層{n}`;
+    const next = [];
+    for (const parent of parents) {
+      const count = getCountForParent(countsByParent, parent.path);
+      for (let i = 1; i <= count; i += 1) {
+        const path = parent.path === "root" ? String(i) : `${parent.path}.${i}`;
+        const label = formatIndexedName(tpl, i);
+        const fullLabel = parent.path === "root" ? label : `${parent.fullLabel} / ${label}`;
+        next.push({ path, label, fullLabel, index: i, parentPath: parent.path });
+      }
+    }
+    levels.push(next);
+  }
+
+  return levels;
+}
+
+function buildCountsFromTree(set) {
+  const counts = { root: Math.max(1, set?.rootIds?.length ?? 1) };
+  let maxDepth = 1;
+  if (!set) return { counts, maxDepth };
+
+  function walk(nodeId, path) {
+    const node = set.nodes[nodeId];
+    if (!node) return;
+    const depth = path.split(".").length;
+    if (depth > maxDepth) maxDepth = depth;
+    counts[path] = node.childrenIds.length;
+    node.childrenIds.forEach((childId, idx) => {
+      walk(childId, `${path}.${idx + 1}`);
+    });
+  }
+
+  set.rootIds.forEach((rootId, idx) => {
+    walk(rootId, String(idx + 1));
+  });
+
+  return { counts, maxDepth: Math.max(1, maxDepth) };
 }
 
 function deleteNodeDeep(set, nodeId) {
@@ -347,10 +403,8 @@ export default function ProblemSetApp() {
   const [collapsedNodeIds, setCollapsedNodeIds] = useState({});
   const importInputRef = useRef(null);
   const [levelTemplates, setLevelTemplates] = useState(["第{n}章", "第2階層{n}", "第3階層{n}"]);
-  const [builderChapterCount, setBuilderChapterCount] = useState(1);
-  const [builderMajorCounts, setBuilderMajorCounts] = useState({});
-  const [builderMinorCounts, setBuilderMinorCounts] = useState({});
-  const [minorTargetChapter, setMinorTargetChapter] = useState(1);
+  const [builderCountsByParent, setBuilderCountsByParent] = useState({ root: 1 });
+  const [countOptionUpper, setCountOptionUpper] = useState(120);
 
   useEffect(() => {
     try {
@@ -382,24 +436,15 @@ export default function ProblemSetApp() {
 
   useEffect(() => {
     if (!active) return;
-    const chapterCount = Math.max(1, active.rootIds.length || 1);
-    const nextMajorCounts = {};
-    const nextMinorCounts = {};
-    for (let ci = 1; ci <= chapterCount; ci += 1) {
-      const chapterId = active.rootIds[ci - 1];
-      const chapterNode = chapterId ? active.nodes[chapterId] : null;
-      const majorCount = chapterNode?.childrenIds?.length ?? 0;
-      nextMajorCounts[ci] = majorCount;
-      for (let mi = 1; mi <= majorCount; mi += 1) {
-        const majorId = chapterNode.childrenIds[mi - 1];
-        const majorNode = majorId ? active.nodes[majorId] : null;
-        nextMinorCounts[`${ci}-${mi}`] = majorNode?.childrenIds?.length ?? 0;
-      }
-    }
-    setBuilderChapterCount(chapterCount);
-    setBuilderMajorCounts(nextMajorCounts);
-    setBuilderMinorCounts(nextMinorCounts);
-    setMinorTargetChapter((prev) => Math.min(Math.max(1, prev), chapterCount));
+    const { counts, maxDepth } = buildCountsFromTree(active);
+    const maxCount = Math.max(1, ...Object.values(counts).map((v) => Math.max(0, Number(v) || 0)));
+    setBuilderCountsByParent(counts);
+    setCountOptionUpper((prev) => Math.max(prev, Math.min(maxCount + 20, prev + COUNT_EXPAND_STEP)));
+    setLevelTemplates((prev) => {
+      const next = [...prev];
+      while (next.length < maxDepth) next.push(`第${next.length + 1}階層{n}`);
+      return next;
+    });
   }, [active]);
 
   function mutateActiveSet(mutator) {
@@ -407,103 +452,109 @@ export default function ProblemSetApp() {
     setSets((prev) => prev.map((s) => (s.id === active.id ? mutator(s) : s)));
   }
 
-  function applyChapterCount(count) {
-    const n = Math.max(1, Number(count) || 1);
-    setBuilderChapterCount(n);
-    setBuilderMajorCounts((prev) => {
-      const next = { ...prev };
-      for (let i = 1; i <= n; i += 1) {
-        if (next[i] == null) next[i] = 0;
-      }
-      Object.keys(next).forEach((k) => {
-        if (Number(k) > n) delete next[k];
-      });
-      return next;
-    });
-    setBuilderMinorCounts((prev) => {
-      const next = {};
-      Object.entries(prev).forEach(([k, v]) => {
-        const [ci] = k.split("-").map(Number);
-        if (ci <= n) next[k] = v;
-      });
-      return next;
-    });
-    setMinorTargetChapter((prev) => Math.min(Math.max(1, prev), n));
-  }
-
-  function setMajorCountForChapter(chapterIndex, count) {
-    const n = Math.max(0, Number(count) || 0);
-    setBuilderMajorCounts((prev) => ({ ...prev, [chapterIndex]: n }));
-    setBuilderMinorCounts((prev) => {
-      const next = { ...prev };
-      Object.keys(next).forEach((k) => {
-        const [ci, mi] = k.split("-").map(Number);
-        if (ci === chapterIndex && mi > n) delete next[k];
-      });
-      for (let mi = 1; mi <= n; mi += 1) {
-        if (next[`${chapterIndex}-${mi}`] == null) next[`${chapterIndex}-${mi}`] = 0;
+  function setCountForParent(parentPath, count) {
+    setBuilderCountsByParent((prev) => {
+      const min = parentPath === "root" ? 1 : 0;
+      const nextValue = Math.max(min, Number(count) || 0);
+      const prevValue = getCountForParent(prev, parentPath);
+      const next = { ...prev, [parentPath]: nextValue };
+      if (nextValue < prevValue) {
+        for (let i = nextValue + 1; i <= prevValue; i += 1) {
+          const droppedPath = parentPath === "root" ? String(i) : `${parentPath}.${i}`;
+          Object.keys(next).forEach((k) => {
+            if (k === droppedPath || k.startsWith(`${droppedPath}.`)) delete next[k];
+          });
+        }
       }
       return next;
     });
   }
 
-  function setMinorCountForMajor(chapterIndex, majorIndex, count) {
-    const n = Math.max(0, Number(count) || 0);
-    setBuilderMinorCounts((prev) => ({ ...prev, [`${chapterIndex}-${majorIndex}`]: n }));
+  function applyCountToAllParents(parents, count) {
+    const value = Math.max(0, Number(count) || 0);
+    setBuilderCountsByParent((prev) => {
+      const next = { ...prev };
+      parents.forEach((p) => {
+        const min = p.path === "root" ? 1 : 0;
+        next[p.path] = Math.max(min, value);
+      });
+      return next;
+    });
   }
 
-  function applyMajorCountToAllChapters(count) {
-    const n = Math.max(0, Number(count) || 0);
-    for (let ci = 1; ci <= builderChapterCount; ci += 1) {
-      setMajorCountForChapter(ci, n);
-    }
+  function expandCountOptions() {
+    setCountOptionUpper((prev) => prev + COUNT_EXPAND_STEP);
   }
 
-  function applyMinorCountToChapter(chapterIndex, count) {
-    const majorCount = Number(builderMajorCounts[chapterIndex] ?? 0);
-    const n = Math.max(0, Number(count) || 0);
-    for (let mi = 1; mi <= majorCount; mi += 1) {
-      setMinorCountForMajor(chapterIndex, mi, n);
+  function ensureCountOptionUpper(value) {
+    const safe = Math.max(0, Number(value) || 0);
+    setCountOptionUpper((prev) => Math.max(prev, Math.min(safe + 20, prev + COUNT_EXPAND_STEP)));
+  }
+
+  function promptCountValue(label, currentValue, minValue) {
+    const raw = prompt(`${label}を入力してください`, String(Math.max(minValue, currentValue)));
+    if (raw == null) return null;
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+      alert("整数で入力してください。");
+      return null;
     }
+    return Math.max(minValue, parsed);
+  }
+
+  function addHierarchyLevel() {
+    setLevelTemplates((prev) => [...prev, `第${prev.length + 1}階層{n}`]);
+  }
+
+  function removeHierarchyLevel() {
+    setLevelTemplates((prev) => {
+      if (prev.length <= 1) return prev;
+      const nextLength = prev.length - 1;
+      setBuilderCountsByParent((countsPrev) => {
+        const nextCounts = { ...countsPrev };
+        Object.keys(nextCounts).forEach((k) => {
+          if (k === "root") return;
+          const depth = k.split(".").length;
+          if (depth >= nextLength) delete nextCounts[k];
+        });
+        return nextCounts;
+      });
+      return prev.slice(0, -1);
+    });
   }
 
   function rebuildTreeFromBuilder() {
     if (!active) return;
     if (!confirm("現在の階層構造を置き換えます。よろしいですか？")) return;
 
-    const [chapterTpl, majorTpl, minorTpl] = levelTemplates;
     const nodes = {};
     const rootIds = [];
+    const levels = Math.max(1, levelTemplates.length);
 
-    for (let ci = 1; ci <= builderChapterCount; ci += 1) {
-      const chapter = createNode(formatIndexedName(chapterTpl, ci), null, undefined, "kind_chapter");
-      nodes[chapter.id] = chapter;
-      rootIds.push(chapter.id);
-
-      const majorCount = Number(builderMajorCounts[ci] ?? 0);
-      for (let mi = 1; mi <= majorCount; mi += 1) {
-        const major = createNode(
-          formatIndexedName(majorTpl, mi),
-          chapter.id,
+    function build(parentPath, parentId, levelIndex) {
+      if (levelIndex >= levels) return;
+      const tpl = levelTemplates[levelIndex] ?? `第${levelIndex + 1}階層{n}`;
+      const count = getCountForParent(builderCountsByParent, parentPath);
+      for (let i = 1; i <= count; i += 1) {
+        const path = parentPath === "root" ? String(i) : `${parentPath}.${i}`;
+        const node = createNode(
+          formatIndexedName(tpl, i),
+          parentId,
           undefined,
-          `kind_major_${ci}_${mi}`
+          `kind_l${levelIndex + 1}_${path.replace(/\./g, "_")}`
         );
-        nodes[major.id] = major;
-        nodes[chapter.id] = { ...nodes[chapter.id], childrenIds: [...nodes[chapter.id].childrenIds, major.id] };
-
-        const minorCount = Number(builderMinorCounts[`${ci}-${mi}`] ?? 0);
-        for (let si = 1; si <= minorCount; si += 1) {
-          const minor = createNode(
-            formatIndexedName(minorTpl, si),
-            major.id,
-            undefined,
-            `kind_minor_${ci}_${mi}_${si}`
-          );
-          nodes[minor.id] = minor;
-          nodes[major.id] = { ...nodes[major.id], childrenIds: [...nodes[major.id].childrenIds, minor.id] };
+        nodes[node.id] = node;
+        if (parentId) {
+          const p = nodes[parentId];
+          nodes[parentId] = { ...p, childrenIds: [...p.childrenIds, node.id] };
+        } else {
+          rootIds.push(node.id);
         }
+        build(path, node.id, levelIndex + 1);
       }
     }
+
+    build("root", null, 0);
 
     mutateActiveSet((s) => ({ ...s, nodes, rootIds }));
     setActiveNodeId(rootIds[0] ?? "");
@@ -511,10 +562,7 @@ export default function ProblemSetApp() {
 
   function resetBuilder() {
     setLevelTemplates(["第{n}章", "第2階層{n}", "第3階層{n}"]);
-    setBuilderChapterCount(1);
-    setBuilderMajorCounts({ 1: 0 });
-    setBuilderMinorCounts({});
-    setMinorTargetChapter(1);
+    setBuilderCountsByParent({ root: 1 });
   }
 
   function addSet() {
@@ -792,30 +840,19 @@ export default function ProblemSetApp() {
     return c;
   }, [scopedNodes]);
 
+  const levelLabels = levelTemplates.map((tpl, idx) => labelFromTemplate(tpl, `第${idx + 1}階層`));
+  const virtualLevels = useMemo(
+    () => getVirtualNodesByLevel(levelTemplates, builderCountsByParent),
+    [levelTemplates, builderCountsByParent]
+  );
+  const levelNodeCounts = levelTemplates.map((_, idx) => virtualLevels[idx + 1]?.length ?? 0);
+
   if (!active) return <div className="p-4">データがありません。</div>;
 
   const progressRatio = scopedNodes.length === 0 ? 0 : Math.round((statusCounts.c / scopedNodes.length) * 100);
   const activeNodeTitle = activeNodeId ? active.nodes[activeNodeId]?.title ?? "" : "全体";
   const breadcrumbIds = activeNodeId ? buildPathIds(active, activeNodeId) : [];
   const collapsibleNodeIds = Object.keys(active.nodes).filter((id) => active.nodes[id].childrenIds.length > 0);
-  const level1Label = labelFromTemplate(levelTemplates[0], "第1階層");
-  const level2Label = labelFromTemplate(levelTemplates[1], "第2階層");
-  const level3Label = labelFromTemplate(levelTemplates[2], "第3階層");
-  const chapterOptions = createCountOptions(builderChapterCount, 200, 200, 1);
-  const globalMajorMax = Math.max(0, ...Object.values(builderMajorCounts).map((v) => Number(v) || 0));
-  const majorOptionsGlobal = createCountOptions(globalMajorMax, 200, 200, 0);
-  const majorCountForMinorTarget = Number(builderMajorCounts[minorTargetChapter] ?? 0);
-  const minorOptionsGlobal = createCountOptions(
-    Math.max(0, ...Object.values(builderMinorCounts).map((v) => Number(v) || 0)),
-    200,
-    200,
-    0
-  );
-  const builderMajorTotal = Array.from({ length: builderChapterCount }, (_, idx) => Number(builderMajorCounts[idx + 1] ?? 0)).reduce(
-    (sum, v) => sum + v,
-    0
-  );
-  const builderMinorTotal = Object.values(builderMinorCounts).reduce((sum, v) => sum + (Number(v) || 0), 0);
 
   return (
     <div className="app-shell">
@@ -868,122 +905,121 @@ export default function ProblemSetApp() {
           <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
         </div>
 
-        <details className="panel">
-          <summary className="cursor-pointer select-none font-semibold">構造・数量設定（1ページ）</summary>
+        <details className="panel planner-shell">
+          <summary className="planner-summary cursor-pointer select-none font-semibold">構造・数量設定（1ページ）</summary>
           <div className="mt-3 space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <span className="chip">{level1Label}: {builderChapterCount}</span>
-              <span className="chip">{level2Label}合計: {builderMajorTotal}</span>
-              <span className="chip">{level3Label}合計: {builderMinorTotal}</span>
+            <div className="planner-meta flex flex-wrap gap-2">
+              {levelLabels.map((label, idx) => (
+                <span key={`lv-count-${idx + 1}`} className="chip">{label}数: {levelNodeCounts[idx] ?? 0}</span>
+              ))}
             </div>
 
-            <div className="grid md:grid-cols-3 gap-2">
-              <label className="text-sm">第1階層名
-                <input
-                  className="control w-full mt-1"
-                  value={levelTemplates[0]}
-                  onChange={(e) => setLevelTemplates((prev) => [e.target.value, prev[1], prev[2]])}
-                  placeholder="第{n}章"
-                />
-              </label>
-              <label className="text-sm">第2階層名
-                <input
-                  className="control w-full mt-1"
-                  value={levelTemplates[1]}
-                  onChange={(e) => setLevelTemplates((prev) => [prev[0], e.target.value, prev[2]])}
-                  placeholder="第2階層{n}"
-                />
-              </label>
-              <label className="text-sm">第3階層名
-                <input
-                  className="control w-full mt-1"
-                  value={levelTemplates[2]}
-                  onChange={(e) => setLevelTemplates((prev) => [prev[0], prev[1], e.target.value])}
-                  placeholder="第3階層{n}"
-                />
-              </label>
+            <div className="planner-actions flex flex-wrap items-center gap-2">
+              <button className="btn" onClick={addHierarchyLevel}>階層を追加</button>
+              <button className="btn" onClick={removeHierarchyLevel} disabled={levelTemplates.length <= 1}>最下層を削除</button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-sm">{level1Label}数
-                <select
-                  className="control ml-2"
-                  value={builderChapterCount}
-                  onChange={(e) => applyChapterCount(parseInt(e.target.value, 10))}
-                >
-                  {chapterOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-              <label className="text-sm">全{level1Label}の{level2Label}数を一括適用
-                <select className="control ml-2" defaultValue="" onChange={(e) => {
-                  if (!e.target.value) return;
-                  applyMajorCountToAllChapters(parseInt(e.target.value, 10));
-                  e.target.value = "";
-                }}>
-                  <option value="">選択</option>
-                  {majorOptionsGlobal.map((n) => <option key={`all-major-${n}`} value={n}>{n}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-2">
-              {Array.from({ length: builderChapterCount }, (_, idx) => idx + 1).map((ci) => (
-                <label key={`chapter-major-${ci}`} className="text-sm">
-                  {formatIndexedName(levelTemplates[0], ci)} の {level2Label}数
-                  <select
-                    className="control ml-2"
-                    value={Number(builderMajorCounts[ci] ?? 0)}
-                    onChange={(e) => setMajorCountForChapter(ci, parseInt(e.target.value, 10))}
-                  >
-                    {createCountOptions(Number(builderMajorCounts[ci] ?? 0), 200, 200, 0).map((n) => (
-                      <option key={`major-${ci}-${n}`} value={n}>{n}</option>
-                    ))}
-                  </select>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {levelTemplates.map((tpl, idx) => (
+                <label key={`template-${idx}`} className="planner-input text-sm">第{idx + 1}階層名
+                  <input
+                    className="control w-full mt-1"
+                    value={tpl}
+                    onChange={(e) => setLevelTemplates((prev) => prev.map((x, i) => (i === idx ? e.target.value : x)))}
+                    placeholder={`第${idx + 1}階層{n}`}
+                  />
                 </label>
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-sm">{level3Label}数を編集する{level1Label}
-                <select
-                  className="control ml-2"
-                  value={minorTargetChapter}
-                  onChange={(e) => setMinorTargetChapter(parseInt(e.target.value, 10))}
-                >
-                  {Array.from({ length: builderChapterCount }, (_, idx) => idx + 1).map((ci) => (
-                    <option key={`minor-target-${ci}`} value={ci}>{formatIndexedName(levelTemplates[0], ci)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm">
-                {formatIndexedName(levelTemplates[0], minorTargetChapter)} の全{level2Label}に{level3Label}数を一括適用
-                <select className="control ml-2" defaultValue="" onChange={(e) => {
-                  if (!e.target.value) return;
-                  applyMinorCountToChapter(minorTargetChapter, parseInt(e.target.value, 10));
-                  e.target.value = "";
-                }}>
-                  <option value="">選択</option>
-                  {minorOptionsGlobal.map((n) => <option key={`all-minor-${n}`} value={n}>{n}</option>)}
-                </select>
-              </label>
-            </div>
+            {Array.from({ length: levelTemplates.length }, (_, levelIdx) => {
+              const parents = virtualLevels[levelIdx] ?? [];
+              const parentLabel = levelIdx === 0 ? "全体" : (levelLabels[levelIdx - 1] ?? `第${levelIdx}階層`);
+              const childLabel = levelLabels[levelIdx] ?? `第${levelIdx + 1}階層`;
+              const minValue = levelIdx === 0 ? 1 : 0;
+              return (
+                <section key={`count-level-${levelIdx}`} className="planner-block space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-sm">{parentLabel}ごとの{childLabel}数</h3>
+                    <label className="text-xs ml-auto">
+                      一括適用
+                      <select
+                        className="control ml-2"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (!raw) return;
+                          if (raw === COUNT_EXPAND_VALUE) {
+                            expandCountOptions();
+                            e.target.value = "";
+                            return;
+                          }
+                          if (raw === COUNT_DIRECT_VALUE) {
+                            const direct = promptCountValue(`${childLabel}数`, minValue, minValue);
+                            if (direct != null) {
+                              ensureCountOptionUpper(direct);
+                              applyCountToAllParents(parents, direct);
+                            }
+                            e.target.value = "";
+                            return;
+                          }
+                          applyCountToAllParents(parents, parseInt(raw, 10));
+                          e.target.value = "";
+                        }}
+                      >
+                        <option value="">選択</option>
+                        {createCountOptions(0, countOptionUpper, minValue).map((n) => (
+                          <option key={`bulk-level-${levelIdx}-${n}`} value={n}>{n}</option>
+                        ))}
+                        <option value={COUNT_EXPAND_VALUE}>+{COUNT_EXPAND_STEP}件を表示</option>
+                        <option value={COUNT_DIRECT_VALUE}>数値を直接入力…</option>
+                      </select>
+                    </label>
+                  </div>
 
-            <div className="grid md:grid-cols-3 gap-2">
-              {Array.from({ length: majorCountForMinorTarget }, (_, idx) => idx + 1).map((mi) => (
-                <label key={`minor-${minorTargetChapter}-${mi}`} className="text-sm">
-                  {formatIndexedName(levelTemplates[1], mi)} の {level3Label}数
-                  <select
-                    className="control ml-2"
-                    value={Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0)}
-                    onChange={(e) => setMinorCountForMajor(minorTargetChapter, mi, parseInt(e.target.value, 10))}
-                  >
-                    {createCountOptions(Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0), 200, 200, 0).map((n) => (
-                      <option key={`minor-opt-${minorTargetChapter}-${mi}-${n}`} value={n}>{n}</option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
+                  {parents.length === 0 ? (
+                    <div className="text-xs text-gray-500">上位階層の項目数を設定するとここに表示されます。</div>
+                  ) : (
+                    <div className="grid md:grid-cols-2 gap-2">
+                      {parents.map((p) => {
+                        const current = getCountForParent(builderCountsByParent, p.path);
+                        return (
+                          <label key={`count-${levelIdx}-${p.path}`} className="text-sm">
+                            {p.path === "root" ? "全体" : p.fullLabel}
+                            <select
+                              className="control ml-2"
+                              value={current}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === COUNT_EXPAND_VALUE) {
+                                  expandCountOptions();
+                                  return;
+                                }
+                                if (raw === COUNT_DIRECT_VALUE) {
+                                  const direct = promptCountValue(`${p.fullLabel} の${childLabel}数`, current, minValue);
+                                  if (direct != null) {
+                                    ensureCountOptionUpper(direct);
+                                    setCountForParent(p.path, direct);
+                                  }
+                                  return;
+                                }
+                                setCountForParent(p.path, parseInt(raw, 10));
+                              }}
+                            >
+                              {createCountOptions(current, countOptionUpper, minValue).map((n) => (
+                                <option key={`opt-${levelIdx}-${p.path}-${n}`} value={n}>{n}</option>
+                              ))}
+                              <option value={COUNT_EXPAND_VALUE}>+{COUNT_EXPAND_STEP}件を表示</option>
+                              <option value={COUNT_DIRECT_VALUE}>数値を直接入力…</option>
+                            </select>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
 
             <div className="flex flex-wrap gap-2">
               <button className="btn btn-primary" onClick={rebuildTreeFromBuilder}>この設定で階層を再生成</button>

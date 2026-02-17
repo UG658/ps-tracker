@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,17 +6,17 @@
 
 @layer base {
   :root {
-    --ink: #0f172a;
-    --muted: #64748b;
-    --line: #d5deea;
-    --line-strong: #94a3b8;
-    --panel: #ffffff;
-    --panel-soft: #f8fbff;
-    --accent: #0f766e;
-    --accent-2: #0891b2;
-    --accent-soft: #e6fffb;
-    --danger: #b91c1c;
-    --danger-soft: #fff1f2;
+    --ink: #0b1220;
+    --muted: #526074;
+    --line: #c9d4e3;
+    --line-strong: #8699b4;
+    --panel: #ffffffee;
+    --panel-soft: #f4f8ff;
+    --accent: #0f5d7d;
+    --accent-2: #127d84;
+    --accent-soft: #dff9ff;
+    --danger: #b42318;
+    --danger-soft: #fff1f3;
   }
 
   html,
@@ -28,12 +28,24 @@
   body {
     margin: 0;
     color: var(--ink);
-    font-family: "Manrope", "Noto Sans JP", sans-serif;
+    font-family: "Plus Jakarta Sans", "Noto Sans JP", sans-serif;
     background:
-      radial-gradient(900px 500px at -5% -10%, #ccfbf1 0%, transparent 60%),
-      radial-gradient(900px 520px at 110% 0%, #dbeafe 0%, transparent 58%),
-      linear-gradient(180deg, #f7fafc 0%, #eef3f8 100%);
+      radial-gradient(920px 540px at -8% -10%, #e0f2ff 0%, transparent 62%),
+      radial-gradient(780px 500px at 104% 0%, #dbf6f4 0%, transparent 58%),
+      repeating-linear-gradient(
+        0deg,
+        rgba(82, 96, 116, 0.045) 0,
+        rgba(82, 96, 116, 0.045) 1px,
+        transparent 1px,
+        transparent 34px
+      ),
+      linear-gradient(175deg, #f8fafd 0%, #eef3f9 100%);
     background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(18, 125, 132, 0.22);
+    color: #062631;
   }
 
   * {
@@ -50,53 +62,61 @@
   .panel {
     background: var(--panel);
     border: 1.5px solid var(--line);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 14px 30px rgba(9, 19, 36, 0.08);
     @apply rounded-2xl p-4 md:p-5;
+    backdrop-filter: blur(2px);
+  }
+
+  .panel:hover {
+    box-shadow: 0 16px 32px rgba(9, 19, 36, 0.1);
   }
 
   .panel-strong {
     background:
-      linear-gradient(130deg, rgba(15, 118, 110, 0.08) 0%, transparent 36%),
+      linear-gradient(142deg, rgba(18, 125, 132, 0.12) 0%, rgba(15, 93, 125, 0.06) 38%, transparent 72%),
       var(--panel-soft);
     border: 1.5px solid var(--line-strong);
-    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+    box-shadow: 0 18px 36px rgba(9, 19, 36, 0.12);
     @apply rounded-3xl p-4 md:p-5;
   }
 
   .title-accent {
     @apply text-3xl md:text-4xl font-extrabold;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     line-height: 1.02;
+    color: #051423;
   }
 
   .chip {
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold;
     border: 1px solid var(--line);
-    background: #fff;
+    background: #fbfdff;
     font-family: "JetBrains Mono", "Noto Sans JP", monospace;
   }
 
   .control {
-    @apply rounded-xl px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-cyan-600/25;
+    @apply rounded-xl px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-cyan-700/25;
     border: 1.5px solid var(--line);
     background: #fff;
     min-height: 2.45rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 
   .control:hover {
     border-color: var(--line-strong);
+    background: #fcfeff;
   }
 
   .btn {
     @apply rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-45 disabled:cursor-not-allowed;
     border: 1.5px solid var(--line-strong);
-    background: #fff;
+    background: #ffffff;
   }
 
   .btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-    border-color: #64748b;
+    box-shadow: 0 8px 18px rgba(9, 19, 36, 0.12);
+    border-color: #5c6f87;
   }
 
   .btn-primary {
@@ -106,12 +126,12 @@
   }
 
   .btn-primary:hover {
-    box-shadow: 0 10px 20px rgba(8, 145, 178, 0.35);
+    box-shadow: 0 12px 22px rgba(18, 125, 132, 0.35);
   }
 
   .btn-danger {
-    @apply text-red-800;
-    border-color: #fda4af;
+    @apply text-red-900;
+    border-color: #fdb5bf;
     background: var(--danger-soft);
   }
 
@@ -121,22 +141,65 @@
   }
 
   .tree-row:hover {
-    background: rgba(15, 118, 110, 0.08);
+    background: rgba(18, 125, 132, 0.08);
   }
 
   .tree-row-active {
     background: var(--accent-soft);
-    border: 1.5px solid #2dd4bf;
-    box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.12);
+    border: 1.5px solid #4fd1c5;
+    box-shadow: inset 0 0 0 1px rgba(18, 125, 132, 0.14);
   }
 
   .toolbar-sticky {
     position: sticky;
     top: 10px;
     z-index: 10;
-    background: #ffffffeb;
+    background: #ffffffec;
     border: 1.5px solid var(--line);
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+    box-shadow: 0 10px 24px rgba(9, 19, 36, 0.1);
     @apply rounded-xl p-3 backdrop-blur;
+  }
+
+  .planner-shell {
+    background:
+      linear-gradient(140deg, rgba(18, 125, 132, 0.08) 0%, rgba(15, 93, 125, 0.04) 34%, transparent 70%),
+      #f8fbff;
+  }
+
+  .planner-summary {
+    @apply flex items-center gap-2;
+    color: #0d344a;
+  }
+
+  .planner-summary::after {
+    content: "Flexible";
+    @apply text-[10px] font-semibold tracking-wider uppercase rounded-full px-2 py-1;
+    border: 1px solid #9ed2df;
+    color: #0f5d7d;
+    background: #ebfaff;
+  }
+
+  .planner-meta .chip {
+    background: #f1f9ff;
+    border-color: #b9d6ee;
+  }
+
+  .planner-actions {
+    @apply pb-1;
+    border-bottom: 1px solid #d6e3f2;
+  }
+
+  .planner-input {
+    @apply rounded-xl p-2;
+    border: 1px dashed #b7cbdf;
+    background: #fbfdff;
+  }
+
+  .planner-block {
+    border: 1.5px solid #c7d9eb;
+    background:
+      linear-gradient(165deg, rgba(18, 125, 132, 0.05) 0%, transparent 50%),
+      #ffffff;
+    @apply rounded-2xl p-3;
   }
 }
