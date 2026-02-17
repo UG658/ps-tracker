@@ -267,6 +267,12 @@ function buildPathIds(set, nodeId) {
   return ids;
 }
 
+function formatIndexedName(template, index) {
+  if (!template) return `項目${index}`;
+  if (template.includes("{n}")) return template.replaceAll("{n}", String(index));
+  return `${template}${index}`;
+}
+
 function deleteNodeDeep(set, nodeId) {
   const targets = new Set(collectDescendants(set, nodeId));
   const nodes = { ...set.nodes };
@@ -326,6 +332,11 @@ export default function ProblemSetApp() {
   const [dailyTarget, setDailyTarget] = useState(20);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState({});
   const importInputRef = useRef(null);
+  const [levelTemplates, setLevelTemplates] = useState(["第{n}章", "大問{n}", "小問{n}"]);
+  const [builderChapterCount, setBuilderChapterCount] = useState(1);
+  const [builderMajorCounts, setBuilderMajorCounts] = useState({});
+  const [builderMinorCounts, setBuilderMinorCounts] = useState({});
+  const [minorTargetChapter, setMinorTargetChapter] = useState(1);
 
   useEffect(() => {
     try {
@@ -355,9 +366,133 @@ export default function ProblemSetApp() {
     setCollapsedNodeIds({});
   }, [active?.id]);
 
+  useEffect(() => {
+    if (!active) return;
+    const chapterCount = Math.max(1, active.rootIds.length || 1);
+    const nextMajorCounts = {};
+    const nextMinorCounts = {};
+    for (let ci = 1; ci <= chapterCount; ci += 1) {
+      const chapterId = active.rootIds[ci - 1];
+      const chapterNode = chapterId ? active.nodes[chapterId] : null;
+      const majorCount = chapterNode?.childrenIds?.length ?? 0;
+      nextMajorCounts[ci] = majorCount;
+      for (let mi = 1; mi <= majorCount; mi += 1) {
+        const majorId = chapterNode.childrenIds[mi - 1];
+        const majorNode = majorId ? active.nodes[majorId] : null;
+        nextMinorCounts[`${ci}-${mi}`] = majorNode?.childrenIds?.length ?? 0;
+      }
+    }
+    setBuilderChapterCount(chapterCount);
+    setBuilderMajorCounts(nextMajorCounts);
+    setBuilderMinorCounts(nextMinorCounts);
+    setMinorTargetChapter((prev) => Math.min(Math.max(1, prev), chapterCount));
+  }, [active]);
+
   function mutateActiveSet(mutator) {
     if (!active) return;
     setSets((prev) => prev.map((s) => (s.id === active.id ? mutator(s) : s)));
+  }
+
+  function applyChapterCount(count) {
+    const n = Math.max(1, Number(count) || 1);
+    setBuilderChapterCount(n);
+    setBuilderMajorCounts((prev) => {
+      const next = { ...prev };
+      for (let i = 1; i <= n; i += 1) {
+        if (next[i] == null) next[i] = 0;
+      }
+      Object.keys(next).forEach((k) => {
+        if (Number(k) > n) delete next[k];
+      });
+      return next;
+    });
+    setBuilderMinorCounts((prev) => {
+      const next = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        const [ci] = k.split("-").map(Number);
+        if (ci <= n) next[k] = v;
+      });
+      return next;
+    });
+    setMinorTargetChapter((prev) => Math.min(Math.max(1, prev), n));
+  }
+
+  function setMajorCountForChapter(chapterIndex, count) {
+    const n = Math.max(0, Number(count) || 0);
+    setBuilderMajorCounts((prev) => ({ ...prev, [chapterIndex]: n }));
+    setBuilderMinorCounts((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        const [ci, mi] = k.split("-").map(Number);
+        if (ci === chapterIndex && mi > n) delete next[k];
+      });
+      for (let mi = 1; mi <= n; mi += 1) {
+        if (next[`${chapterIndex}-${mi}`] == null) next[`${chapterIndex}-${mi}`] = 0;
+      }
+      return next;
+    });
+  }
+
+  function setMinorCountForMajor(chapterIndex, majorIndex, count) {
+    const n = Math.max(0, Number(count) || 0);
+    setBuilderMinorCounts((prev) => ({ ...prev, [`${chapterIndex}-${majorIndex}`]: n }));
+  }
+
+  function applyMajorCountToAllChapters(count) {
+    const n = Math.max(0, Number(count) || 0);
+    for (let ci = 1; ci <= builderChapterCount; ci += 1) {
+      setMajorCountForChapter(ci, n);
+    }
+  }
+
+  function applyMinorCountToChapter(chapterIndex, count) {
+    const majorCount = Number(builderMajorCounts[chapterIndex] ?? 0);
+    const n = Math.max(0, Number(count) || 0);
+    for (let mi = 1; mi <= majorCount; mi += 1) {
+      setMinorCountForMajor(chapterIndex, mi, n);
+    }
+  }
+
+  function rebuildTreeFromBuilder() {
+    if (!active) return;
+    if (!confirm("現在の階層構造を置き換えます。よろしいですか？")) return;
+
+    const [chapterTpl, majorTpl, minorTpl] = levelTemplates;
+    const nodes = {};
+    const rootIds = [];
+
+    for (let ci = 1; ci <= builderChapterCount; ci += 1) {
+      const chapter = createNode(formatIndexedName(chapterTpl, ci), null, undefined, "kind_chapter");
+      nodes[chapter.id] = chapter;
+      rootIds.push(chapter.id);
+
+      const majorCount = Number(builderMajorCounts[ci] ?? 0);
+      for (let mi = 1; mi <= majorCount; mi += 1) {
+        const major = createNode(
+          formatIndexedName(majorTpl, mi),
+          chapter.id,
+          undefined,
+          `kind_major_${ci}_${mi}`
+        );
+        nodes[major.id] = major;
+        nodes[chapter.id] = { ...nodes[chapter.id], childrenIds: [...nodes[chapter.id].childrenIds, major.id] };
+
+        const minorCount = Number(builderMinorCounts[`${ci}-${mi}`] ?? 0);
+        for (let si = 1; si <= minorCount; si += 1) {
+          const minor = createNode(
+            formatIndexedName(minorTpl, si),
+            major.id,
+            undefined,
+            `kind_minor_${ci}_${mi}_${si}`
+          );
+          nodes[minor.id] = minor;
+          nodes[major.id] = { ...nodes[major.id], childrenIds: [...nodes[major.id].childrenIds, minor.id] };
+        }
+      }
+    }
+
+    mutateActiveSet((s) => ({ ...s, nodes, rootIds }));
+    setActiveNodeId(rootIds[0] ?? "");
   }
 
   function addSet() {
@@ -387,102 +522,6 @@ export default function ProblemSetApp() {
     }
     setSets(next);
     setActiveSetId(next[0].id);
-  }
-
-  function changeChapterCount() {
-    if (!active) return;
-    const currentCount = active.rootIds.length;
-    const raw = prompt("章の数を入力してください", String(currentCount || 1));
-    if (!raw) return;
-    const nextCount = parseInt(raw, 10);
-    if (!Number.isFinite(nextCount) || nextCount <= 0) {
-      alert("1以上の数を入力してください");
-      return;
-    }
-
-    if (nextCount === currentCount) return;
-
-    if (nextCount < currentCount) {
-      const removeCount = currentCount - nextCount;
-      if (!confirm(`末尾の${removeCount}章を配下ごと削除します。よろしいですか？`)) return;
-    }
-
-    let nextActiveId = activeNodeId;
-    mutateActiveSet((s) => {
-      let nextSet = { ...s, nodes: { ...s.nodes }, rootIds: [...s.rootIds] };
-
-      if (nextCount > nextSet.rootIds.length) {
-        for (let i = nextSet.rootIds.length + 1; i <= nextCount; i += 1) {
-          const chapter = createNode(`第${i}章`, null, undefined, "kind_chapter");
-          nextSet.nodes[chapter.id] = chapter;
-          nextSet.rootIds.push(chapter.id);
-          if (!nextActiveId) nextActiveId = chapter.id;
-        }
-      } else {
-        while (nextSet.rootIds.length > nextCount) {
-          const removeId = nextSet.rootIds[nextSet.rootIds.length - 1];
-          const deleted = deleteNodeDeep(nextSet, removeId);
-          nextSet = deleted.nextSet;
-          if (nextActiveId && !nextSet.nodes[nextActiveId]) {
-            nextActiveId = nextSet.rootIds[0] ?? "";
-          }
-        }
-      }
-
-      return nextSet;
-    });
-
-    setActiveNodeId(nextActiveId || "");
-  }
-
-  function addChildNode() {
-    if (!active) return;
-    if (!activeNodeId) {
-      alert("先に章または親項目を選択してください");
-      return;
-    }
-
-    const parent = active.nodes[activeNodeId];
-    if (!parent) return;
-
-    const itemName = prompt("追加する子項目の名前（例: 大問）");
-    if (!itemName) return;
-
-    const rawCount = prompt("追加する子項目数（半角数字）", "1");
-    if (!rawCount) return;
-    const count = parseInt(rawCount, 10);
-    if (!Number.isFinite(count) || count <= 0) {
-      alert("1以上の数を入力してください");
-      return;
-    }
-
-    let firstNewId = "";
-    mutateActiveSet((s) => {
-      const currentParent = s.nodes[parent.id];
-      if (!currentParent) return s;
-      const nextNodes = { ...s.nodes };
-      const newIds = [];
-
-      for (let i = 1; i <= count; i += 1) {
-        const child = createNode(
-          `${itemName}${i}`,
-          currentParent.id,
-          undefined,
-          createKind(`kind_child_of_${currentParent.kind || "unknown"}`)
-        );
-        nextNodes[child.id] = child;
-        newIds.push(child.id);
-        if (!firstNewId) firstNewId = child.id;
-      }
-
-      nextNodes[currentParent.id] = {
-        ...currentParent,
-        childrenIds: [...currentParent.childrenIds, ...newIds],
-      };
-
-      return { ...s, nodes: nextNodes };
-    });
-    if (firstNewId) setActiveNodeId(firstNewId);
   }
 
   function renameNode() {
@@ -737,6 +776,9 @@ export default function ProblemSetApp() {
   const activeNodeTitle = activeNodeId ? active.nodes[activeNodeId]?.title ?? "" : "全体";
   const breadcrumbIds = activeNodeId ? buildPathIds(active, activeNodeId) : [];
   const collapsibleNodeIds = Object.keys(active.nodes).filter((id) => active.nodes[id].childrenIds.length > 0);
+  const chapterOptions = Array.from({ length: 20 }, (_, i) => i + 1);
+  const itemCountOptions = Array.from({ length: 21 }, (_, i) => i);
+  const majorCountForMinorTarget = Number(builderMajorCounts[minorTargetChapter] ?? 0);
 
   return (
     <div className="app-shell">
@@ -784,20 +826,125 @@ export default function ProblemSetApp() {
             </div>
           </details>
 
-          <details className="control">
-            <summary className="cursor-pointer select-none">階層の編集</summary>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button className="btn" onClick={changeChapterCount}>章数を変更</button>
-              <button className="btn btn-primary" onClick={addChildNode}>子項目を追加（複数可）</button>
-              <button className="btn" onClick={renameNode} disabled={!activeNodeId}>項目名を変更</button>
-              <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>項目を削除</button>
-            </div>
-          </details>
-
           <button className="btn" onClick={exportSets}>JSONエクスポート</button>
           <button className="btn" onClick={triggerImport}>JSONインポート</button>
           <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImport} />
         </div>
+
+        <details className="panel">
+          <summary className="cursor-pointer select-none font-semibold">構造・数量設定（1ページ）</summary>
+          <div className="mt-3 space-y-4">
+            <div className="grid md:grid-cols-3 gap-2">
+              <label className="text-sm">第1階層名（章）
+                <input
+                  className="control w-full mt-1"
+                  value={levelTemplates[0]}
+                  onChange={(e) => setLevelTemplates((prev) => [e.target.value, prev[1], prev[2]])}
+                  placeholder="第{n}章"
+                />
+              </label>
+              <label className="text-sm">第2階層名（大問）
+                <input
+                  className="control w-full mt-1"
+                  value={levelTemplates[1]}
+                  onChange={(e) => setLevelTemplates((prev) => [prev[0], e.target.value, prev[2]])}
+                  placeholder="大問{n}"
+                />
+              </label>
+              <label className="text-sm">第3階層名（小問）
+                <input
+                  className="control w-full mt-1"
+                  value={levelTemplates[2]}
+                  onChange={(e) => setLevelTemplates((prev) => [prev[0], prev[1], e.target.value])}
+                  placeholder="小問{n}"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm">章数
+                <select
+                  className="control ml-2"
+                  value={builderChapterCount}
+                  onChange={(e) => applyChapterCount(parseInt(e.target.value, 10))}
+                >
+                  {chapterOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label className="text-sm">全章の大問数を一括適用
+                <select className="control ml-2" defaultValue="" onChange={(e) => {
+                  if (!e.target.value) return;
+                  applyMajorCountToAllChapters(parseInt(e.target.value, 10));
+                  e.target.value = "";
+                }}>
+                  <option value="">選択</option>
+                  {itemCountOptions.map((n) => <option key={`all-major-${n}`} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-2">
+              {Array.from({ length: builderChapterCount }, (_, idx) => idx + 1).map((ci) => (
+                <label key={`chapter-major-${ci}`} className="text-sm">
+                  {formatIndexedName(levelTemplates[0], ci)} の {levelTemplates[1].replace("{n}", "") || "大問"}数
+                  <select
+                    className="control ml-2"
+                    value={Number(builderMajorCounts[ci] ?? 0)}
+                    onChange={(e) => setMajorCountForChapter(ci, parseInt(e.target.value, 10))}
+                  >
+                    {itemCountOptions.map((n) => <option key={`major-${ci}-${n}`} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm">小問数を編集する章
+                <select
+                  className="control ml-2"
+                  value={minorTargetChapter}
+                  onChange={(e) => setMinorTargetChapter(parseInt(e.target.value, 10))}
+                >
+                  {Array.from({ length: builderChapterCount }, (_, idx) => idx + 1).map((ci) => (
+                    <option key={`minor-target-${ci}`} value={ci}>{formatIndexedName(levelTemplates[0], ci)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                {formatIndexedName(levelTemplates[0], minorTargetChapter)} の全大問に小問数を一括適用
+                <select className="control ml-2" defaultValue="" onChange={(e) => {
+                  if (!e.target.value) return;
+                  applyMinorCountToChapter(minorTargetChapter, parseInt(e.target.value, 10));
+                  e.target.value = "";
+                }}>
+                  <option value="">選択</option>
+                  {itemCountOptions.map((n) => <option key={`all-minor-${n}`} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-2">
+              {Array.from({ length: majorCountForMinorTarget }, (_, idx) => idx + 1).map((mi) => (
+                <label key={`minor-${minorTargetChapter}-${mi}`} className="text-sm">
+                  {formatIndexedName(levelTemplates[1], mi)} の {levelTemplates[2].replace("{n}", "") || "小問"}数
+                  <select
+                    className="control ml-2"
+                    value={Number(builderMinorCounts[`${minorTargetChapter}-${mi}`] ?? 0)}
+                    onChange={(e) => setMinorCountForMajor(minorTargetChapter, mi, parseInt(e.target.value, 10))}
+                  >
+                    {itemCountOptions.map((n) => <option key={`minor-opt-${minorTargetChapter}-${mi}-${n}`} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-primary" onClick={rebuildTreeFromBuilder}>この設定で階層を再生成</button>
+              <button className="btn" onClick={renameNode} disabled={!activeNodeId}>選択項目名を変更</button>
+              <button className="btn btn-danger" onClick={deleteNode} disabled={!activeNodeId}>選択項目を削除</button>
+            </div>
+          </div>
+        </details>
       </header>
 
       <section className="grid md:grid-cols-3 gap-4">
