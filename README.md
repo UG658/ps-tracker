@@ -1,12 +1,127 @@
-# React + Vite
+# ps-tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+問題集を自由な階層構造で管理し、学習状況をブラウザ上で追跡する React + Vite アプリです。章・単元・設問のような固定構造に縛られず、手元の教材に合わせてツリーを組み立てられます。
 
-Currently, two official plugins are available:
+データはサーバーではなくブラウザの `localStorage` に保存されるため、個人学習用の軽量トラッカーとして使えます。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 主な機能
 
-## Expanding the ESLint configuration
+- 問題集の追加、名前変更、削除
+- 任意の深さでの階層設計
+- 階層ごとの件数設定と一括適用
+- ノード単位の学習状態管理
+- パンくず、ツリー展開、フォーカス切り替え
+- 「今日やる」候補の自動抽出
+- 検索、状態フィルタ、ソート
+- 一覧に対する一括ステータス更新
+- メモ保存
+- JSON エクスポート / インポート
+- Undo / Redo
+- `localStorage` への自動保存
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 想定ユースケース
+
+- 参考書を `章 -> 節 -> 問題` のように整理したい
+- 過去問を `年度 -> 大問 -> 小問` で追跡したい
+- 自作の学習セットを細かく分解して進捗管理したい
+- 間違えた問題や復習対象をあとから拾い直したい
+
+## 学習状態
+
+各ノードは次の 4 状態で管理されます。
+
+- `未` (`n`)
+- `×` (`x`)
+- `△` (`d`)
+- `✔` (`c`)
+
+状態更新時には試行履歴と最終学習日時が記録されます。初回完了時には初回完了日時と完了までの試行回数も保持されます。
+
+## 技術スタック
+
+- React 19
+- Vite 7
+- Tailwind CSS
+- `date-fns`
+- `lucide-react`
+- `vite-plugin-pwa`
+
+## セットアップ
+
+### 前提
+
+- Node.js 18 以上を推奨
+- npm
+
+### 起動
+
+```bash
+npm install
+npm run dev
+```
+
+ブラウザで表示されたローカル URL を開いて利用します。
+
+### ビルド
+
+```bash
+npm run build
+```
+
+### プレビュー
+
+```bash
+npm run preview
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+## 使い方
+
+1. 問題集を作成する
+2. 階層編集でレベル名と件数を決める
+3. ツリーを生成して学習単位を作る
+4. 各項目を `×` / `△` / `✔` で更新する
+5. 「今日やる」や検索・フィルタを使って復習対象を絞る
+6. 必要に応じて JSON でバックアップする
+
+## データ保存について
+
+- 学習データはブラウザの `localStorage` に保存されます
+- 保存キーは `ps_tracker_v5` です
+- 旧キー `ps_tracker_v4` / `ps_tracker_v3` からの読み込みにも対応しています
+- バックエンド連携やアカウント同期はありません
+- 利用ブラウザや端末を変えるとデータは自動同期されません
+
+## JSON 入出力
+
+アプリ内データは JSON でエクスポート / インポートできます。ブラウザ保存だけに依存したくない場合のバックアップ用途を想定しています。
+
+## PWA
+
+`vite-plugin-pwa` を使った PWA 構成が入っており、将来的なインストール利用を見据えた設定になっています。
+
+## ディレクトリ構成
+
+```text
+.
+├─ src/
+│  ├─ App.jsx
+│  ├─ ProblemSetApp.jsx
+│  ├─ App.css
+│  └─ index.css
+├─ public/
+├─ index.html
+├─ SPEC.md
+├─ package.json
+└─ vite.config.js
+```
+
+## 補足
+
+- 仕様メモは `SPEC.md` にあります
+- 現状はフロントエンド単体のローカル完結アプリです
